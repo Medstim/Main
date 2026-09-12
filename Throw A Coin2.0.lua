@@ -8,9 +8,13 @@ local Library = loadstring(game:HttpGet(
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
 
-local plr    = Players.LocalPlayer
-local Rem    = ReplicatedStorage.Assets.Events
+local plr = Players.LocalPlayer
+local Rem = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Events")
+
+-- Track all connections for complete script cleanup/unload
+local activeConnections = {}
 
 -- ============================================================
 -- Window
@@ -24,56 +28,54 @@ local Window = Library:CreateWindow({
 -- ============================================================
 -- Tabs
 -- ============================================================
-local MainTab      = Window:CreateTab({ Name = "Main",      Icon = "house"   })
-local MiscTab      = Window:CreateTab({ Name = "Misc",      Icon = "hammer-code" })
-local GamepassTab  = Window:CreateTab({ Name = "Extra", Icon = "star"  })
-local SettingsTab  = Window:CreateTab({ Name = "Settings",  Icon = "gear"   })
+local MainTab     = Window:CreateTab({ Name = "Main",     Icon = "house"       })
+local MiscTab     = Window:CreateTab({ Name = "Misc",     Icon = "hammer-code" })
+local GamepassTab = Window:CreateTab({ Name = "Extra",    Icon = "star"        })
+local SettingsTab = Window:CreateTab({ Name = "Settings", Icon = "gear"        })
 
 -- ============================================================
 -- Shared State
 -- ============================================================
-local AutoThrowtime        = 2.5
-getgenv().ThrowSequence    = 0
-getgenv().AutoThrowCoin    = false
-getgenv().AutoSellAll      = false
-getgenv().AutoUpgrade1     = false
-getgenv().AutoUpgrade2     = false
-getgenv().AutoUpgrade3     = false
-getgenv().antiafk          = false
-getgenv().TargetWalkSpeed  = 16
-
+local AutoThrowtime       = 0.5
+getgenv().ThrowSequence   = 0
+getgenv().AutoThrowCoin   = false
+getgenv().AutoSell        = false
+getgenv().AutoSellAll     = false
+getgenv().AutoUpgrade     = false
+getgenv().AutoUpgrade1    = false
+getgenv().AutoUpgrade2    = false
+getgenv().AutoUpgrade3    = false
+getgenv().antiafk         = false
+getgenv().TargetWalkSpeed = 16
 
 local PREFIXES = { "Rainbow", "Astral", "Void", "Divine", "Huge", "Big", "Normal" }
+
 -- ============================================================
 -- Local Functions
 -- ============================================================
-
-
-
-
-
-
 local selectedSellPrefixes = {}
-local selectedPrefixes = {}
+local selectedPrefixes     = {}
 
 local function sellByPrefixes(prefixes)
     local Event = ReplicatedStorage.Assets.Events.SellItem
     local count = 0
 
-    for _, tool in plr.Backpack:GetChildren() do
-        if tool:IsA("Tool") then
-            local mutations = tool:GetAttribute("Mutations")
-            for _, prefix in prefixes do
-                if prefix == "Normal" then
-                    if mutations == "[]" or mutations == "" or mutations == nil then
+    if plr.Backpack then
+        for _, tool in ipairs(plr.Backpack:GetChildren()) do
+            if tool:IsA("Tool") then
+                local mutations = tool:GetAttribute("Mutations")
+                for _, prefix in ipairs(prefixes) do
+                    if prefix == "Normal" then
+                        if mutations == "[]" or mutations == "" or mutations == nil then
+                            Event:FireServer(tool)
+                            count += 1
+                            break
+                        end
+                    elseif mutations and string.find(mutations, prefix) then
                         Event:FireServer(tool)
                         count += 1
                         break
                     end
-                elseif mutations and mutations:find(prefix) then
-                    Event:FireServer(tool)
-                    count += 1
-                    break
                 end
             end
         end
@@ -86,24 +88,26 @@ local function favoriteByPrefixes(prefixes)
     local Event = ReplicatedStorage.Assets.Events.ToggleFavorite
     local count = 0
 
-    for _, tool in plr.Backpack:GetChildren() do
-        if tool:IsA("Tool") then
-            if tool:GetAttribute("Favorited") ~= false then continue end
+    if plr.Backpack then
+        for _, tool in ipairs(plr.Backpack:GetChildren()) do
+            if tool:IsA("Tool") then
+                if tool:GetAttribute("Favorited") ~= false then continue end
 
-            local mutations = tool:GetAttribute("Mutations")
-            for _, prefix in prefixes do
-                if prefix == "Normal" then
-                    if mutations == "[]" or mutations == "" or mutations == nil then
+                local mutations = tool:GetAttribute("Mutations")
+                for _, prefix in ipairs(prefixes) do
+                    if prefix == "Normal" then
+                        if mutations == "[]" or mutations == "" or mutations == nil then
+                            firesignal(Event.OnClientEvent, tool, true)
+                            count += 1
+                            tool:SetAttribute("Favorited", true)
+                            break
+                        end
+                    elseif mutations and string.find(mutations, prefix) then
                         firesignal(Event.OnClientEvent, tool, true)
                         count += 1
                         tool:SetAttribute("Favorited", true)
                         break
                     end
-                elseif mutations and mutations:find(prefix) then
-                    firesignal(Event.OnClientEvent, tool, true)
-                    count += 1
-                    tool:SetAttribute("Favorited", true)
-                    break
                 end
             end
         end
@@ -117,22 +121,24 @@ local function unfavoriteByPrefixes(prefixes)
     local Event = ReplicatedStorage.Assets.Events.ToggleFavorite
     local count = 0
 
-    for _, tool in plr.Backpack:GetChildren() do
-        if tool:IsA("Tool") and tool:GetAttribute("Favorited") == true then
-            local mutations = tool:GetAttribute("Mutations")
-            for _, prefix in prefixes do
-                if prefix == "Normal" then
-                    if mutations == "[]" or mutations == "" or mutations == nil then
+    if plr.Backpack then
+        for _, tool in ipairs(plr.Backpack:GetChildren()) do
+            if tool:IsA("Tool") and tool:GetAttribute("Favorited") == true then
+                local mutations = tool:GetAttribute("Mutations")
+                for _, prefix in ipairs(prefixes) do
+                    if prefix == "Normal" then
+                        if mutations == "[]" or mutations == "" or mutations == nil then
+                            firesignal(Event.OnClientEvent, tool, false)
+                            count += 1
+                            tool:SetAttribute("Favorited", false)
+                            break
+                        end
+                    elseif mutations and string.find(mutations, prefix) then
                         firesignal(Event.OnClientEvent, tool, false)
                         count += 1
                         tool:SetAttribute("Favorited", false)
                         break
                     end
-                elseif mutations and mutations:find(prefix) then
-                    firesignal(Event.OnClientEvent, tool, false)
-                    count += 1
-                    tool:SetAttribute("Favorited", false)
-                    break
                 end
             end
         end
@@ -150,13 +156,13 @@ local function setLocalVIP(value)
     if vipWall then vipWall.CanCollide = not state end
 
     pcall(function()
-        local map        = workspace:FindFirstChild("Map")
-        local fountain   = map and map:FindFirstChild("VIPFountain")
-        local mainF      = fountain and fountain:FindFirstChild("Fountain")
-        local model      = mainF and mainF:FindFirstChild("Model")
-        local innerV     = model and model:FindFirstChild("v")
-        local targetV    = innerV and innerV:FindFirstChild("v")
-        local particles  = targetV and targetV:FindFirstChild("VIPLuck")
+        local map       = workspace:FindFirstChild("Map")
+        local fountain  = map and map:FindFirstChild("VIPFountain")
+        local mainF     = fountain and fountain:FindFirstChild("Fountain")
+        local model     = mainF and mainF:FindFirstChild("Model")
+        local innerV    = model and model:FindFirstChild("v")
+        local targetV   = innerV and innerV:FindFirstChild("v")
+        local particles = targetV and targetV:FindFirstChild("VIPLuck")
         if particles and particles:IsA("ParticleEmitter") then
             particles.Enabled = state
         end
@@ -226,10 +232,10 @@ local function CleanCoinLanded(isFastMode)
     end)
     coin = ok and coin or "Basic Coin"
 
-    local lookDir          = (target.Position - HRP.Position).Unit
-    local crossVec         = Vector3.new(-lookDir.Z, 0, lookDir.X)
-    local mainLandingPos   = target.Position + lookDir * 8
-    local secondaryPos     = plr:GetAttribute("DoubleThrow") and (mainLandingPos - crossVec * 3) or nil
+    local lookDir        = (target.Position - HRP.Position).Unit
+    local crossVec       = Vector3.new(-lookDir.Z, 0, lookDir.X)
+    local mainLandingPos = target.Position + lookDir * 8
+    local secondaryPos   = plr:GetAttribute("DoubleThrow") and (mainLandingPos - crossVec * 3) or nil
     if secondaryPos then mainLandingPos = mainLandingPos + crossVec * 3 end
 
     if isFastMode and Rem:FindFirstChild("CoinThrow") then
@@ -252,22 +258,22 @@ local function CleanCoinLanded(isFastMode)
 end
 
 local function BuyAllCoins()
-    for _, v in pairs(plr.PlayerGui.UiFolder.Main.Frames.CoinShop.SFcontainer.SF:GetChildren()) do
+    for _, v in ipairs(plr.PlayerGui.UiFolder.Main.Frames.CoinShop.SFcontainer.SF:GetChildren()) do
         if v:IsA("Frame") then Rem.BuyCoin:FireServer(v.Name) end
     end
 end
 
 local function BuyAllUpgrades()
-    for _, v in pairs(plr.PlayerGui.UiFolder.Main.Frames.Upgrades.SFHolder:GetChildren()) do
+    for _, v in ipairs(plr.PlayerGui.UiFolder.Main.Frames.Upgrades.SFHolder:GetChildren()) do
         if v:IsA("Frame") then Rem.RequestUpgrade:FireServer(v.Name) end
     end
 end
 
 -- ============================================================
--- WalkSpeed enforcer loop
+-- Background Loops & Connections
 -- ============================================================
 task.spawn(function()
-    while true do
+    while getgenv().ScriptRunning do
         task.wait(0.1)
         pcall(function()
             if plr and plr.Character then
@@ -280,14 +286,14 @@ task.spawn(function()
     end
 end)
 
--- Anti-AFK
-plr.Idled:Connect(function()
+-- Anti-AFK Connection
+table.insert(activeConnections, plr.Idled:Connect(function()
     if not getgenv().antiafk then return end
     local vu = game:GetService("VirtualUser")
     vu:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
     task.wait(0.8)
     vu:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-end)
+end))
 
 -- ============================================================
 -- MAIN TAB
@@ -295,8 +301,8 @@ end)
 MainTab:CreateLabel("── Automation ──")
 
 MainTab:CreateToggle({
-    Name    = "Auto Throw Coin",
-    Default = false,
+    Name     = "Auto Throw Coin",
+    Default  = false,
     Callback = function(enabled)
         getgenv().AutoThrowCoin = enabled
         if not enabled then return end
@@ -315,8 +321,8 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-    Name    = "Faster Auto Throw",
-    Default = false,
+    Name     = "Faster Auto Throw",
+    Default  = false,
     Callback = function(enabled)
         getgenv().AutoThrowCoin = enabled
         if not enabled then return end
@@ -345,8 +351,8 @@ MainTab:CreateToggle({
 MainTab:CreateLabel("── Auto Sell ──")
 
 MainTab:CreateToggle({
-    Name    = "Auto Sell",
-    Default = false,
+    Name     = "Auto Sell",
+    Default  = false,
     Callback = function(enabled)
         getgenv().AutoSell = enabled
         if not enabled then return end
@@ -354,7 +360,7 @@ MainTab:CreateToggle({
         task.spawn(function()
             while getgenv().AutoSell do
                 if #selectedSellPrefixes == 0 then
-                    Library:Notify({ Title = "Nothing Selected", Content = "Pick at least one Mutation first. ", Duration = 3 })
+                    Library:Notify({ Title = "Nothing Selected", Content = "Pick at least one Mutation first.", Duration = 3 })
                     getgenv().AutoSell = false
                     break
                 end
@@ -367,18 +373,17 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateDropdown({
-    Name    = "Select Mutations",
-    Options = PREFIXES,
-    Multi   = true,
+    Name     = "Select Mutations",
+    Options  = PREFIXES,
+    Multi    = true,
     Callback = function(choices)
         selectedSellPrefixes = choices
     end,
 })
 
-
 MainTab:CreateToggle({
-    Name    = "Auto Sell All",
-    Default = false,
+    Name     = "Auto Sell All",
+    Default  = false,
     Callback = function(enabled)
         getgenv().AutoSellAll = enabled
         if not enabled then return end
@@ -393,7 +398,6 @@ MainTab:CreateToggle({
     end,
 })
 
-
 -- ============================================================
 -- MISC TAB
 -- ============================================================
@@ -402,24 +406,24 @@ MiscTab:CreateLabel("── Upgrades ──")
 local selectedUpgrades = {}
 
 MiscTab:CreateDropdown({
-    Name    = "Select Upgrades",
-    Options = { "All Upgrades", "Luck Multiplier", "Value Multiplier", "Throw Speed" },
-    Multi   = true,
+    Name     = "Select Upgrades",
+    Options  = { "All Upgrades", "Luck Multiplier", "Value Multiplier", "Throw Speed" },
+    Multi    = true,
     Callback = function(choices)
         selectedUpgrades = choices
     end,
 })
 
 MiscTab:CreateToggle({
-    Name    = "Auto Upgrade",
-    Default = false,
+    Name     = "Auto Upgrade",
+    Default  = false,
     Callback = function(enabled)
         getgenv().AutoUpgrade = enabled
         if not enabled then return end
 
         task.spawn(function()
             while getgenv().AutoUpgrade do
-                for _, choice in selectedUpgrades do
+                for _, choice in ipairs(selectedUpgrades) do
                     if choice == "All Upgrades" then
                         BuyAllUpgrades()
                     else
@@ -432,19 +436,16 @@ MiscTab:CreateToggle({
     end,
 })
 
-
 MiscTab:CreateLabel("── Favourite items ──")
 
-
 MiscTab:CreateDropdown({
-    Name    = "Select Mutations",
-    Options = PREFIXES,
-    Multi   = true,
+    Name     = "Select Mutations",
+    Options  = PREFIXES,
+    Multi    = true,
     Callback = function(choices)
         selectedPrefixes = choices
     end,
 })
-
 
 MiscTab:CreateButton({
     Name     = "Favourite Selected",
@@ -469,6 +470,7 @@ MiscTab:CreateButton({
         unfavoriteByPrefixes(selectedPrefixes)
     end,
 })
+
 -- ============================================================
 -- GAMEPASSES TAB
 -- ============================================================
@@ -476,27 +478,25 @@ GamepassTab:CreateLabel("── Gamepass Spoofs ──")
 GamepassTab:CreateWarning("These are local-only and do not grant real gamepasses.")
 
 local gpFunctions = {
-    ["VIP"]         = setLocalVIP,
-    ["Double Cash"] = setLocalDoubleCash,
+    ["VIP"]          = setLocalVIP,
+    ["Double Cash"]  = setLocalDoubleCash,
     ["Double Throw"] = setLocalDoubleThrow,
-    ["Insane Luck"] = setLocalInsaneLuck,
-    ["More Luck"]   = setLocalMoreLuck,
-    ["Mega Potion"] = setLocalMegaPotion,
+    ["Insane Luck"]  = setLocalInsaneLuck,
+    ["More Luck"]    = setLocalMoreLuck,
+    ["Mega Potion"]  = setLocalMegaPotion,
 }
 
 local gpOrder = { "VIP", "Double Cash", "Double Throw", "Insane Luck", "More Luck", "Mega Potion" }
 
 GamepassTab:CreateDropdown({
-    Name    = "Active Spoofs",
-    Options = gpOrder,
-    Multi   = true,
+    Name     = "Active Spoofs",
+    Options  = gpOrder,
+    Multi    = true,
     Callback = function(selected)
-        -- Build a set of what's currently selected
         local active = {}
-        for _, name in selected do active[name] = true end
+        for _, name in ipairs(selected) do active[name] = true end
 
-        -- Enable or disable each one based on selection
-        for _, name in gpOrder do
+        for _, name in ipairs(gpOrder) do
             gpFunctions[name](active[name] == true)
         end
     end,
@@ -505,20 +505,21 @@ GamepassTab:CreateDropdown({
 GamepassTab:CreateLabel("── Unlocks ──")
 
 GamepassTab:CreateToggle({
-    Name    = "Trade World",
-    Default = false,
+    Name     = "Trade World",
+    Default  = false,
     Callback = function(enabled)
         setLocalTradeWorld(enabled)
     end,
 })
+
 -- ============================================================
 -- SETTINGS TAB
 -- ============================================================
-SettingsTab:CreateLabel("── Performance ──")
+SettingsTab:CreateLabel("── Settings ──")
 
 SettingsTab:CreateToggle({
-    Name    = "Block Throw Rejected Event",
-    Default = false,
+    Name     = "Block Throw Rejected Event",
+    Default  = false,
     Callback = function(enabled)
         local ev = ReplicatedStorage.Assets.Events.ThrowRejected
         for _, connection in ipairs(getconnections(ev.OnClientEvent)) do
@@ -528,16 +529,16 @@ SettingsTab:CreateToggle({
 })
 
 SettingsTab:CreateToggle({
-    Name    = "Disable 3D Rendering",
-    Default = false,
+    Name     = "Disable 3D Rendering",
+    Default  = false,
     Callback = function(enabled)
-        game:GetService("RunService"):Set3dRenderingEnabled(not enabled)
+        RunService:Set3dRenderingEnabled(not enabled)
     end,
 })
 
 SettingsTab:CreateToggle({
-    Name    = "Anti AFK",
-    Default = false,
+    Name     = "Anti AFK",
+    Default  = false,
     Callback = function(enabled)
         getgenv().antiafk = enabled
     end,
@@ -567,14 +568,14 @@ SettingsTab:CreateTextbox({
         if n and n >= 0 then
             AutoThrowtime = n
             Library:Notify({
-                Title   = "Delay Updated",
-                Content = "Auto Throw delay set to " .. n .. "s",
+                Title    = "Delay Updated",
+                Content  = "Auto Throw delay set to " .. n .. "s",
                 Duration = 3,
             })
         else
             Library:Notify({
-                Title   = "Invalid Input",
-                Content = "Please enter a valid number (e.g. 2.5)",
+                Title    = "Invalid Input",
+                Content  = "Please enter a valid number (e.g. 2.5)",
                 Duration = 3,
             })
         end
@@ -582,10 +583,140 @@ SettingsTab:CreateTextbox({
 })
 
 -- ============================================================
--- Ready notification
+-- STATS PANEL 
+-- ============================================================
+SettingsTab:CreateLabel("── Stats ──")
+
+local PanelLib = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/Medstim/Simple-lib/refs/heads/main/MainSrc2.0.lua"
+))()
+
+local statsPanel = nil
+
+local function buildStatsPanel()
+    local Panel = PanelLib:CreatePanel({
+        Title    = "Throw A Coin",
+        Position = "topright",
+        Width    = 220,
+        toggleKey = Enum.KeyCode.RightAlt,
+        Accent   = Color3.fromRGB(187, 167, 185),
+    })
+
+    Panel:Label("── Leaderboard ──")
+    local throwsStat = Panel:Stat("Throws", "-", Color3.fromRGB(238, 235, 238))
+    local CashStat   = Panel:Stat("Cash",   "-", Color3.fromRGB(84, 126, 75))
+
+    Panel:Divider()
+
+    Panel:Label("── Progression ──")
+    local worldStat  = Panel:Stat("Highest World",    "-")
+    local questsStat = Panel:Stat("Quests Completed", "-")
+    local skipsStat  = Panel:Stat("Mutation Skips",   "-", Color3.fromRGB(247, 241, 241))
+
+    Panel:Divider()
+
+    Panel:Label("── Inventory ──")
+    local astralStat = Panel:Stat("Astral items", "-", Color3.fromRGB(66, 3, 66))
+    local divineStat = Panel:Stat("Divine items", "-", Color3.fromRGB(240, 180, 75))
+    local voidStat   = Panel:Stat("Void items",   "-", Color3.fromRGB(71, 8, 173))
+    local totalStat  = Panel:Stat("Total items",  "-", Color3.fromRGB(255, 255, 255))
+
+    local COUNT_PREFIXES = { "Astral", "Divine", "Void" }
+
+    local function countBackpack()
+        local counts = { Astral = 0, Divine = 0, Void = 0 }
+        local total  = 0
+        if plr.Backpack then
+            for _, tool in ipairs(plr.Backpack:GetChildren()) do
+                if tool:IsA("Tool") then
+                    total += 1
+                    local mutations = tool:GetAttribute("Mutations")
+                    for _, prefix in ipairs(COUNT_PREFIXES) do
+                        if mutations and string.find(mutations, prefix) then
+                            counts[prefix] += 1
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        return counts, total
+    end
+
+    local function updateInventory()
+        pcall(function()
+            local counts, total = countBackpack()
+            astralStat:Set(counts["Astral"])
+            divineStat:Set(counts["Divine"])
+            voidStat:Set(counts["Void"])
+            totalStat:Set(total)
+        end)
+    end
+
+    local function updateAttributes()
+        pcall(function()
+            worldStat:Set(plr:GetAttribute("HighestWorld")     or "-")
+            questsStat:Set(plr:GetAttribute("QuestsCompleted") or "-")
+            skipsStat:Set(plr:GetAttribute("MutationSkips")    or "-")
+        end)
+    end
+
+    task.spawn(function()
+        local ls = plr:WaitForChild("leaderstats", 10)
+        if ls then
+            local throws = ls:FindFirstChild("Throws")
+            if throws then
+                throwsStat:Set(throws.Value)
+                table.insert(activeConnections, throws:GetPropertyChangedSignal("Value"):Connect(function()
+                    throwsStat:Set(throws.Value)
+                end))
+            end
+        end
+
+        pcall(function()
+            local cash = plr.PlayerGui.UiFolder.Main.HUD.Left.Money.Moneylabel
+            CashStat:Set(cash.Text)
+            table.insert(activeConnections, cash:GetPropertyChangedSignal("Text"):Connect(function()
+                CashStat:Set(cash.Text)
+            end))
+        end)
+    end)
+
+    table.insert(activeConnections, plr.AttributeChanged:Connect(function(attr)
+        if attr == "HighestWorld" or attr == "QuestsCompleted" or attr == "MutationSkips" or attr == "Cash" then
+            updateAttributes()
+        end
+    end))
+
+    if plr.Backpack then
+        table.insert(activeConnections, plr.Backpack.ChildAdded:Connect(updateInventory))
+        table.insert(activeConnections, plr.Backpack.ChildRemoved:Connect(updateInventory))
+    end
+
+    updateAttributes()
+    updateInventory()
+
+    return Panel
+end
+
+SettingsTab:CreateToggle({
+    Name     = "Show Stats Panel",
+    Default  = false,
+    Callback = function(enabled)
+        if enabled then
+            statsPanel = buildStatsPanel()
+        else
+            if statsPanel then
+                statsPanel:Destroy()
+                statsPanel = nil
+            end
+        end
+    end,
+})
+
 -- ============================================================
 Library:Notify({
-    Title   = "Throw A Coin Loaded",
-    Content = "Press RightShift to toggle the window.",
+    Title    = "Throw A Coin Loaded",
+    Content  = "Press RightShift to toggle the window.",
     Duration = 7,
 })
